@@ -67,7 +67,9 @@ public sealed class AccountSettings
 
     /// <summary>
     /// Azure application id used for the device code flow. The default is the public
-    /// Minecraft launcher client id; register your own if Microsoft rejects it.
+    /// The Minecraft launcher client id. Kept only as a default that fails loudly: it is a
+    /// legacy Live Connect id the modern endpoint cannot resolve, so online-mode sign-in
+    /// needs an Azure application of your own, allow-listed by Mojang. See the README.
     /// </summary>
     [JsonPropertyName("msClientId")] public string MsClientId { get; set; } = "00000000402b5328";
 

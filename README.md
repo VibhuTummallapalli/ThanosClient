@@ -86,10 +86,41 @@ You get a code to type at `microsoft.com/link`; there is no embedded browser. Th
 resulting session is cached (see below) so the prompt only appears once, and it is
 refreshed silently with the stored refresh token when it expires.
 
-**Azure client id.** `account.msClientId` defaults to the public Minecraft launcher
-application id. Microsoft may reject it for third-party device code use, in which case
-the error message says so — register your own application in the Azure portal (public
-client, "Allow public client flows" enabled) and put its id in the config.
+### You need your own Azure application, and Mojang has to approve it
+
+This is the fiddliest part of running the client, and there is no way around it.
+
+**1. Register an Azure application.** Azure portal → *App registrations* → *New
+registration*. Set supported account types to **Personal Microsoft accounts only**, and
+leave the redirect URI blank — the device code flow never redirects. Then under
+*Authentication* → *Advanced settings*, turn on **Allow public client flows**; without it
+the token request fails with `AADSTS7000218`. Put the Application (client) id in
+`account.msClientId`.
+
+Registering anything requires an Azure **directory**. A plain Microsoft account does not
+have one, and the portal refuses with *"The ability to create applications outside of a
+directory has been deprecated."* Signing up for a free Azure account provisions one.
+
+**2. Get the application allow-listed by Mojang.** Mojang now manually reviews every new
+application that talks to the Java Edition game service APIs. Until yours is approved the
+final hop fails with **`Invalid app registration`** — while every step before it,
+including Xbox Live and XSTS, succeeds. Apply at <https://aka.ms/mce-reviewappid>;
+submissions are reviewed weekly.
+
+**The launcher's own client id (`00000000402b5328`) is not a shortcut.** It is a legacy
+Live Connect id, not an Azure one: the modern endpoint cannot resolve it at all
+(`AADSTS700016`), and its own legacy endpoint will issue a device code and show a real
+consent screen before refusing the token exchange for anyone but the launcher.
+
+#### Sign-in errors, and what they actually mean
+
+| Error | Cause |
+| --- | --- |
+| `AADSTS700016: Application ... was not found` | `msClientId` is not a registered Azure application id |
+| `AADSTS7000218` | *Allow public client flows* is off on the registration |
+| `invalid_grant` / *"user could not be authenticated"* | the legacy endpoint refusing a non-launcher caller |
+| `Xbox Live authentication failed (HTTP 400)` | malformed XBL request — the payload must be exact PascalCase |
+| `Invalid app registration` | the application is not on Mojang's allow list yet |
 
 **Offline mode.** For a cracked or LAN server, set `account.mode` to `"offline"` or pass
 `--offline <name>`. No account is involved. Connecting this way to a server that
@@ -143,7 +174,7 @@ you are halfway through typing.
   "account": {
     "mode": "microsoft",            // or "offline"
     "offlineUsername": "Player",
-    "msClientId": "00000000402b5328",
+    "msClientId": "00000000-0000-0000-0000-000000000000",  // yours; see "Signing in"
     "sessionCachePath": ""          // empty means the per-user default
   },
   "console": {
