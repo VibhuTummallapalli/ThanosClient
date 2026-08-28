@@ -59,6 +59,12 @@ public sealed class SessionProvider
             ConsoleIO.WriteWarning("Signing in again.");
         }
 
+        // Bank the refresh token the instant the sign-in lands. If the Xbox or Minecraft
+        // exchange then fails, the next run refreshes from this instead of asking the user
+        // to approve another device code.
+        _auth.MicrosoftSignInSucceeded = refreshToken =>
+            SessionCache.Save(_cachePath, new Session { MsRefreshToken = refreshToken });
+
         Session session = await _auth.LoginInteractiveAsync(ct);
         SessionCache.Save(_cachePath, session);
         return session;

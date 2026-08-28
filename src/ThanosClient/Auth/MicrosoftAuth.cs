@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,6 +11,12 @@ namespace ThanosClient.Auth;
 ///   MSA device code -> Xbox Live -> XSTS -> Minecraft services -> profile.
 /// Device code rather than a redirect flow, because this is a console app with no
 /// browser or loopback listener of its own.
+///
+/// Needs account.msClientId to name an Azure application registered for personal Microsoft
+/// accounts, with public client flows enabled. The launcher id this used to default to is a
+/// Live Connect app id that AAD will not resolve (AADSTS700016); its own legacy endpoint
+/// does resolve it but then refuses the token exchange for anyone but the launcher, and
+/// refuses outright on accounts with current security requirements. So: register one.
 /// </summary>
 public sealed class MicrosoftAuth
 {
@@ -23,6 +30,14 @@ public sealed class MicrosoftAuth
 
     private readonly HttpClient _http;
     private readonly string _clientId;
+
+    /// <summary>
+    /// Fires as soon as the Microsoft sign-in itself succeeds, before the Xbox and Minecraft
+    /// exchanges that follow it. Those can fail for reasons that have nothing to do with the
+    /// sign-in, and without this the refresh token dies with them -- sending the user back
+    /// through a device code they already completed. Persist it here and a retry is silent.
+    /// </summary>
+    public Action<string>? MicrosoftSignInSucceeded { get; set; }
 
     public MicrosoftAuth(string clientId, HttpClient? http = null)
     {
@@ -43,6 +58,10 @@ public sealed class MicrosoftAuth
         ConsoleIO.WriteLine("");
 
         TokenResponse token = await PollForTokenAsync(device, ct);
+
+        if (!string.IsNullOrEmpty(token.RefreshToken))
+            MicrosoftSignInSucceeded?.Invoke(token.RefreshToken!);
+
         return await ExchangeForSessionAsync(token.AccessToken, token.RefreshToken, ct);
     }
 
@@ -68,15 +87,20 @@ public sealed class MicrosoftAuth
 
     private async Task<DeviceCodeResponse> StartDeviceCodeAsync(CancellationToken ct)
     {
-        var form = new Dictionary<string, string> { ["client_id"] = _clientId, ["scope"] = Scope };
+        var form = new Dictionary<string, string>
+        {
+            ["client_id"] = _clientId,
+            ["scope"] = Scope,
+        };
 
         using var response = await _http.PostAsync(DeviceCodeUrl, new FormUrlEncodedContent(form), ct);
         string body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
             throw new AuthException(
                 $"Could not start the device code flow: {Describe(body)}. " +
-                "If this says the client id is unauthorized, register your own Azure application " +
-                "and set msClientId in the config (see README).");
+                "If this says the application was not found, account.msClientId is not a " +
+                "registered Azure application id -- register one (public client flows on, " +
+                "personal Microsoft accounts allowed) and set it (see README).");
 
         return Parse<DeviceCodeResponse>(body);
     }
@@ -156,10 +180,12 @@ public sealed class MicrosoftAuth
             TokenType = "JWT",
         };
 
-        using var response = await _http.PostAsJsonAsync(XblUrl, payload, ct);
+        using var response = await PostXboxAsync(XblUrl, payload, ct);
         string body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw new AuthException($"Xbox Live authentication failed: {Describe(body)}");
+            throw new AuthException(
+                $"Xbox Live authentication failed (HTTP {(int)response.StatusCode}): " +
+                $"{Describe(body)}{XboxError(response)}");
 
         using JsonDocument doc = JsonDocument.Parse(body);
         string token = doc.RootElement.GetProperty("Token").GetString()
@@ -178,7 +204,7 @@ public sealed class MicrosoftAuth
             TokenType = "JWT",
         };
 
-        using var response = await _http.PostAsJsonAsync(XstsUrl, payload, ct);
+        using var response = await PostXboxAsync(XstsUrl, payload, ct);
         string body = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
@@ -250,6 +276,32 @@ public sealed class MicrosoftAuth
     }
 
     /// <summary>Turns an error body into something short enough for one console line.</summary>
+    /// <summary>
+    /// POSTs JSON to an Xbox endpoint. Both of them want an explicit JSON Accept and the
+    /// contract-version header; without those they can answer with a bare status and no
+    /// body at all, which leaves nothing to report.
+    /// </summary>
+    private async Task<HttpResponseMessage> PostXboxAsync(string url, object payload, CancellationToken ct)
+    {
+        var content = new StringContent(JsonSerializer.Serialize(payload));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Add("x-xbl-contract-version", "1");
+
+        return await _http.SendAsync(request, ct);
+    }
+
+    /// <summary>An empty-bodied Xbox rejection still names its reason in a header.</summary>
+    private static string XboxError(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("X-Err", out var values))
+            return $"[X-Err {string.Join(",", values)}]";
+
+        return "";
+    }
+
     private static string Describe(string body)
     {
         string? description = ReadField(body, "error_description")
