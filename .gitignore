@@ -1,0 +1,6 @@
+bin/
+obj/
+*.user
+thanosclient.json
+session.json
+logs/
