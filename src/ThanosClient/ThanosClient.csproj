@@ -7,7 +7,10 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ThanosClient</RootNamespace>
     <AssemblyName>ThanosClient</AssemblyName>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Discord.Net builds an en-US CultureInfo internally, which throws outright under
+         invariant globalization and takes the GUILD_AVAILABLE handler down with it, so the
+         guild's channels never get cached. The runtime image ships ICU. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
