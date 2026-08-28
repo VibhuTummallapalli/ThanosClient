@@ -307,8 +307,19 @@ docker compose logs -f
 ```
 
 `./data` holds `thanosclient.json`, `session.json` and `logs/`, so a rebuild or a host
-reboot loses nothing. Set `account.sessionCachePath` to `/data/session.json` in the config
-so the token lands on the volume rather than inside the container.
+reboot loses nothing. The image sets `THANOSCLIENT_SESSION_PATH=/data/session.json`, so the
+cached token lands on the volume without any config change — otherwise it would default to
+a path under `HOME` inside the image and be discarded on every rebuild.
+
+On a **Linux** host, the container runs as uid 1000 and the bind mount keeps the host's
+ownership, so create the directory with a matching owner before the first run:
+
+```sh
+mkdir -p data && sudo chown -R 1000:1000 data
+```
+
+Skip that and the first run fails with permission errors writing the config. Docker Desktop
+on Windows and macOS handles this for you.
 
 The Discord token comes from the environment. Put it in a `.env` file next to
 `docker-compose.yml` (gitignored):
@@ -392,10 +403,10 @@ which protocol a server actually speaks.
 dotnet run --project tests/ThanosClient.Tests
 ```
 
-173 checks covering VarInt and numeric encoding, the signed server-hash digest against
+179 checks covering VarInt and numeric encoding, the signed server-hash digest against
 the three published vectors, the CFB8 cipher against the platform's own AES-CFB8, packet
 framing across every compression and encryption combination, chat component parsing,
-address parsing, and the SRV skip conditions.
+address parsing, the SRV skip conditions, and session-path precedence.
 
 The Discord bridge is covered where it matters and can be tested without a gateway
 connection: the whitelist decision (including that an unconfigured whitelist denies

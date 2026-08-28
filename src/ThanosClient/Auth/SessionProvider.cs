@@ -22,9 +22,8 @@ public sealed class SessionProvider
     {
         _settings = settings;
         _auth = new MicrosoftAuth(settings.MsClientId);
-        _cachePath = string.IsNullOrWhiteSpace(settings.SessionCachePath)
-            ? SessionCache.DefaultPath
-            : settings.SessionCachePath;
+        string configured = settings.EffectiveSessionCachePath;
+        _cachePath = string.IsNullOrWhiteSpace(configured) ? SessionCache.DefaultPath : configured;
     }
 
     public string CachePath => _cachePath;

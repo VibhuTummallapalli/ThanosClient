@@ -43,6 +43,9 @@ public static class Program
         Section("srv resolution");
         await TestSrvGating();
 
+        Section("session path resolution");
+        TestSessionPathPrecedence();
+
         Section("discord bridge");
         BridgeTests.Run(Check, (name, expected, actual) => Equal(name, expected, actual));
 
@@ -296,6 +299,45 @@ public static class Program
         var second = new PacketReader(receiver.ReadPacket());
         Equal($"{label}: second packet id", 0x40, second.VarInt());
         Equal($"{label}: second payload length", 900, second.String().Length);
+    }
+
+    // --- session path ----------------------------------------------------------
+
+    /// <summary>
+    /// The container relies on the environment override to keep the cached token on its
+    /// volume. Getting this wrong is silent - the bot works, then needs a fresh
+    /// interactive sign-in after every redeploy - so the precedence is pinned here.
+    /// </summary>
+    private static void TestSessionPathPrecedence()
+    {
+        string? original = Environment.GetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable);
+
+        try
+        {
+            var settings = new AccountSettings();
+
+            Environment.SetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable, null);
+            Equal("no config and no environment leaves it empty", "", settings.EffectiveSessionCachePath);
+
+            settings.SessionCachePath = "/from/config.json";
+            Equal("config is used when the environment is unset", "/from/config.json", settings.EffectiveSessionCachePath);
+
+            Environment.SetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable, "/data/session.json");
+            Equal("the environment wins over config", "/data/session.json", settings.EffectiveSessionCachePath);
+
+            Environment.SetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable, "   ");
+            Equal("a blank environment value falls back to config", "/from/config.json", settings.EffectiveSessionCachePath);
+
+            Environment.SetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable, "  /data/session.json  ");
+            Equal("the environment value is trimmed", "/data/session.json", settings.EffectiveSessionCachePath);
+
+            Check("the path is not serialised into the config file",
+                !System.Text.Json.JsonSerializer.Serialize(settings).Contains("EffectiveSessionCachePath"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AccountSettings.SessionPathEnvironmentVariable, original);
+        }
     }
 
     // --- srv -------------------------------------------------------------------

@@ -74,6 +74,24 @@ public sealed class AccountSettings
     /// <summary>Where the cached session is stored. Empty means the per-user default path.</summary>
     [JsonPropertyName("sessionCachePath")] public string SessionCachePath { get; set; } = "";
 
+    /// <summary>
+    /// Environment override for <see cref="SessionCachePath"/>. Containers need this: the
+    /// per-user default resolves under HOME, which lives inside the image, so without it
+    /// the cached token is silently lost on every rebuild.
+    /// </summary>
+    public const string SessionPathEnvironmentVariable = "THANOSCLIENT_SESSION_PATH";
+
+    /// <summary>The session path actually used: environment first, then config.</summary>
+    [JsonIgnore]
+    public string EffectiveSessionCachePath
+    {
+        get
+        {
+            string? fromEnvironment = Environment.GetEnvironmentVariable(SessionPathEnvironmentVariable);
+            return string.IsNullOrWhiteSpace(fromEnvironment) ? SessionCachePath.Trim() : fromEnvironment.Trim();
+        }
+    }
+
     [JsonIgnore]
     public bool IsOffline => string.Equals(Mode, "offline", StringComparison.OrdinalIgnoreCase);
 }

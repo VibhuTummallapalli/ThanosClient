@@ -26,6 +26,11 @@ RUN useradd --create-home --uid 1000 thanos \
 USER thanos
 WORKDIR /data
 
+# Without this the session would default to a path under HOME, which is inside the
+# image: the token would be discarded on every rebuild and the bot would need a fresh
+# interactive sign-in each deploy.
+ENV THANOSCLIENT_SESSION_PATH=/data/session.json
+
 # Running detached leaves no terminal attached, which the client handles by not reading
 # console input.
 ENTRYPOINT ["dotnet", "/app/ThanosClient.dll"]
