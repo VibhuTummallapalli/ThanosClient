@@ -4,3 +4,7 @@ obj/
 thanosclient.json
 session.json
 logs/
+
+# Docker runtime state and secrets
+data/
+.env

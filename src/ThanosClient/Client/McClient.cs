@@ -15,7 +15,7 @@ namespace ThanosClient.Client;
 public sealed class McClient : IDisposable
 {
     private readonly Settings _settings;
-    private readonly Session _session;
+    private Session _session;
     private readonly List<ChatBot> _bots;
     private readonly SessionServer _sessionServer;
 
@@ -51,6 +51,13 @@ public sealed class McClient : IDisposable
 
     /// <summary>The address currently in use, including any SRV redirection.</summary>
     public ServerAddress? Address { get; private set; }
+
+    /// <summary>
+    /// Swaps in a refreshed login. Access tokens expire after about a day, so a
+    /// long-running client has to be given a new one before it can reconnect.
+    /// Only takes effect on the next connection attempt.
+    /// </summary>
+    public void UseSession(Session session) => _session = session;
     public PlayerList Players { get; } = new();
     public Location? CurrentLocation { get; private set; }
     public int EntityId { get; private set; }

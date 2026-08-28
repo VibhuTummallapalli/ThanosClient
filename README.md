@@ -60,6 +60,7 @@ ThanosClient [host[:port]] [options]
   -c, --config <file>       config file (default thanosclient.json)
       --offline <name>      join as an offline-mode player instead of signing in
       --login               ignore the cached session and sign in again
+      --auth-only           sign in, save the session, and exit (for headless hosts)
       --ping                print the server list ping and exit
       --debug               log every packet id received
       --no-color            disable ANSI colours
@@ -281,6 +282,87 @@ Developer Portal. Senders still have to pass the whitelist.
 Everything sent to the server is filtered to the characters vanilla 1.8 accepts. Discord
 text is full of newlines, emoji and control characters, and a section sign alone is
 enough to get the client kicked for "Illegal characters in chat".
+
+## Running it 24/7
+
+The client is built to run unattended: it reconnects after drops, refreshes its login
+before every connection attempt, and does not need a terminal attached.
+
+Resources are tiny — no world model, no rendering — so the smallest box any provider
+sells is enough. 1 vCPU and 512 MB is generous.
+
+### Docker
+
+Sign in once interactively, then leave it running detached:
+
+```sh
+mkdir -p data
+docker compose build
+
+# One-time: prints a device code, saves data/session.json, exits.
+docker compose run --rm -it thanosclient --auth-only
+
+docker compose up -d
+docker compose logs -f
+```
+
+`./data` holds `thanosclient.json`, `session.json` and `logs/`, so a rebuild or a host
+reboot loses nothing. Set `account.sessionCachePath` to `/data/session.json` in the config
+so the token lands on the volume rather than inside the container.
+
+The Discord token comes from the environment. Put it in a `.env` file next to
+`docker-compose.yml` (gitignored):
+
+```
+THANOSCLIENT_DISCORD_TOKEN=...
+```
+
+### systemd
+
+If you would rather not use containers:
+
+```sh
+dotnet publish src/ThanosClient -c Release -o /opt/thanosclient
+sudo -u thanos /opt/thanosclient/ThanosClient --auth-only   # once, interactively
+```
+
+```ini
+# /etc/systemd/system/thanosclient.service
+[Unit]
+Description=ThanosClient
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=thanos
+WorkingDirectory=/var/lib/thanosclient
+ExecStart=/usr/bin/dotnet /opt/thanosclient/ThanosClient.dll
+Environment=THANOSCLIENT_DISCORD_TOKEN=...
+Restart=always
+RestartSec=30
+StandardInput=null
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Put the token in a root-owned `EnvironmentFile=` instead of the unit if other users can
+read it. Then `systemctl enable --now thanosclient` and `journalctl -u thanosclient -f`.
+
+### What to expect
+
+Sign-in is the only interactive step, and only the first time. After that the stored
+Microsoft refresh token renews the login on its own — including on reconnects days later,
+which is the case that matters: a Minecraft access token lasts about a day, and without
+that refresh a long-running bot would be rejected by the session server on its first
+reconnect after 24 hours.
+
+If the refresh ever fails (the account changed its password, or Microsoft invalidated the
+token), the log says so and asks for `--auth-only` on that host. Nothing recovers from
+that automatically, by design — it needs a human at a browser.
+
+The console still works if you attach a terminal, and is simply idle when you do not.
 
 ## What it implements
 

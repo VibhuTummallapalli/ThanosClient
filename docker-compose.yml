@@ -1,0 +1,25 @@
+services:
+  thanosclient:
+    build: .
+    image: thanosclient
+    container_name: thanosclient
+
+    # The client handles its own in-game reconnects; this covers the process dying,
+    # the daemon restarting, and the host rebooting.
+    restart: unless-stopped
+
+    environment:
+      # Read from the shell or a .env file beside this one. Deliberately kept out of
+      # the repo and the image.
+      THANOSCLIENT_DISCORD_TOKEN: ${THANOSCLIENT_DISCORD_TOKEN:-}
+
+    volumes:
+      # Everything that must survive a rebuild: thanosclient.json, session.json, logs/.
+      - ./data:/data
+
+    # Chat output is modest, but an unattended bot runs for months.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

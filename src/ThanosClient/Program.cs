@@ -51,10 +51,12 @@ public static class Program
         if (options.PingOnly)
             return await PingOnlyAsync(host, port);
 
+        var sessions = new SessionProvider(settings.Account);
+
         Session? session;
         try
         {
-            session = await ResolveSessionAsync(settings, options.ForceLogin, Shutdown.Token);
+            session = await sessions.AcquireAsync(options.ForceLogin, Shutdown.Token);
         }
         catch (AuthException ex)
         {
@@ -72,10 +74,23 @@ public static class Program
             ? $"Using offline account \"{session.Username}\"."
             : $"Signed in as {session.Username}.");
 
-        return await RunAsync(settings, session, host, port);
+        // Headless hosts sign in once and then run detached, so --auth-only exists to do
+        // the interactive half on its own.
+        if (options.AuthOnly)
+        {
+            // Offline mode derives its identity from the username, so there is nothing
+            // cached and nothing to point at.
+            ConsoleIO.WriteSuccess(session.Offline
+                ? "Offline mode needs no sign-in; nothing was saved."
+                : $"Session saved to {sessions.CachePath}.");
+            return 0;
+        }
+
+        return await RunAsync(settings, sessions, session, host, port);
     }
 
-    private static async Task<int> RunAsync(Settings settings, Session session, string host, ushort port)
+    private static async Task<int> RunAsync(
+        Settings settings, SessionProvider sessions, Session session, string host, ushort port)
     {
         // The relay is an ordinary bot, so it has to exist before the client is built.
         // The bridge is built afterwards, because it needs the client.
@@ -122,6 +137,12 @@ public static class Program
             while (!_quit)
             {
                 Wake.Reset();
+
+                // Refresh before every attempt, not just at startup: a client that stays
+                // up for days would otherwise reconnect with a token that expired hours
+                // ago and be rejected by the session server every time.
+                session = await sessions.EnsureFreshAsync(session, Shutdown.Token);
+                client.UseSession(session);
 
                 bool connected = await client.ConnectAsync(host, port, Shutdown.Token);
 
@@ -202,54 +223,6 @@ public static class Program
             return (parsedHost, parsedPort);
 
         return (host, port);
-    }
-
-    private static async Task<Session?> ResolveSessionAsync(Settings settings, bool forceLogin, CancellationToken ct)
-    {
-        if (settings.Account.IsOffline)
-        {
-            string name = settings.Account.OfflineUsername.Trim();
-            if (name.Length is 0 or > 16)
-            {
-                ConsoleIO.WriteError("account.offlineUsername must be 1-16 characters.");
-                return null;
-            }
-            return Session.ForOffline(name);
-        }
-
-        string cachePath = string.IsNullOrWhiteSpace(settings.Account.SessionCachePath)
-            ? SessionCache.DefaultPath
-            : settings.Account.SessionCachePath;
-
-        var auth = new MicrosoftAuth(settings.Account.MsClientId);
-
-        if (forceLogin) SessionCache.Clear(cachePath);
-
-        Session? cached = forceLogin ? null : SessionCache.Load(cachePath);
-
-        if (cached is { Offline: false })
-        {
-            if (!cached.IsExpired) return cached;
-
-            if (!string.IsNullOrEmpty(cached.MsRefreshToken))
-            {
-                try
-                {
-                    ConsoleIO.WriteInfo("Cached token expired; refreshing...");
-                    Session refreshed = await auth.RefreshAsync(cached.MsRefreshToken!, ct);
-                    SessionCache.Save(cachePath, refreshed);
-                    return refreshed;
-                }
-                catch (AuthException ex)
-                {
-                    ConsoleIO.WriteWarning($"Refresh failed ({ex.Message}); signing in again.");
-                }
-            }
-        }
-
-        Session session = await auth.LoginInteractiveAsync(ct);
-        SessionCache.Save(cachePath, session);
-        return session;
     }
 
     private static async Task<int> PingOnlyAsync(string host, ushort port)

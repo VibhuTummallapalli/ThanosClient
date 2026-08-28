@@ -11,6 +11,9 @@ public sealed class CommandLineOptions
     public string? OfflineUsername { get; private set; }
     public bool PingOnly { get; private set; }
     public bool ForceLogin { get; private set; }
+
+    /// <summary>Sign in, save the session, and exit without connecting.</summary>
+    public bool AuthOnly { get; private set; }
     public bool Debug { get; private set; }
     public bool NoColor { get; private set; }
     public bool ShowHelp { get; private set; }
@@ -52,6 +55,10 @@ public sealed class CommandLineOptions
 
                 case "--login" or "--relogin":
                     options.ForceLogin = true;
+                    break;
+
+                case "--auth-only":
+                    options.AuthOnly = true;
                     break;
 
                 case "--debug":
@@ -112,6 +119,7 @@ public sealed class CommandLineOptions
         Console.WriteLine("  -c, --config <file>       config file (default thanosclient.json)");
         Console.WriteLine("      --offline <name>      join as an offline-mode player instead of signing in");
         Console.WriteLine("      --login               ignore the cached session and sign in again");
+        Console.WriteLine("      --auth-only           sign in, save the session, and exit (for headless hosts)");
         Console.WriteLine("      --ping                print the server list ping and exit");
         Console.WriteLine("      --debug               log every packet id received");
         Console.WriteLine("      --no-color            disable ANSI colours");

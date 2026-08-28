@@ -1,0 +1,23 @@
+# Build output: the image builds its own.
+**/bin/
+**/obj/
+
+.git/
+.gitignore
+.vs/
+*.user
+
+# Local state must never end up in an image layer. session.json in particular holds a
+# live Minecraft access token and a Microsoft refresh token.
+thanosclient.json
+session.json
+logs/
+data/
+.env
+
+Dockerfile
+docker-compose.yml
+README.md
+
+# The client image does not run the test project.
+tests/
