@@ -1,25 +1,38 @@
+# One service per Minecraft account. They share the image but nothing else: each gets
+# its own data dir, and so its own MinecraftClient.ini, session cache and Discord bridge.
+x-mcc: &mcc
+  build: .
+  image: mcc:20260827-508
+  restart: unless-stopped
+
+  # NO pty, deliberately. With tty:true, MCC's stdin/stdout/stderr all point at the
+  # same pseudo-terminal, and the terminal's echo flag loops everything MCC prints
+  # back onto its own input. MCC reads that as typed lines and sends every non-slash
+  # one to the server as chat -- it emitted 26 garbage messages that way before it was
+  # caught. stdin_open:false alone does NOT fix it, because the pty is still shared.
+  # A plain pipe does: `docker attach` can still type commands in, but nothing echoes
+  # back, so MCC never reads its own output as chat.
+  stdin_open: true
+  tty: false
+
+  # MCC sits well under this. The cap stops one account starving the other or the host.
+  mem_limit: 320m
+
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  thanosclient:
-    build: .
-    image: thanosclient
-    container_name: thanosclient
-
-    # The client handles its own in-game reconnects; this covers the process dying,
-    # the daemon restarting, and the host rebooting.
-    restart: unless-stopped
-
-    environment:
-      # Read from the shell or a .env file beside this one. Deliberately kept out of
-      # the repo and the image.
-      THANOSCLIENT_DISCORD_TOKEN: ${THANOSCLIENT_DISCORD_TOKEN:-}
-
+  mcc-1:
+    <<: *mcc
+    container_name: mcc-1
     volumes:
-      # Everything that must survive a rebuild: thanosclient.json, session.json, logs/.
-      - ./data:/data
+      - ./data-1:/opt/data
 
-    # Chat output is modest, but an unattended bot runs for months.
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+  mcc-2:
+    <<: *mcc
+    container_name: mcc-2
+    volumes:
+      - ./data-2:/opt/data

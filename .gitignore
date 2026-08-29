@@ -1,10 +1,6 @@
-bin/
-obj/
-*.user
-thanosclient.json
-session.json
-logs/
+# Per-account runtime state. Each data dir holds a filled-in MinecraftClient.ini -- with
+# the account password and the Discord bot token in plain text -- plus SessionCache.db,
+# which carries a live Minecraft session. None of it may be committed.
+data-*/
 
-# Docker runtime state and secrets
-data/
 .env

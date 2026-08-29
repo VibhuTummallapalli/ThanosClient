@@ -1,0 +1,12 @@
+# CosmicReborn refuses chat and commands until the character has moved, so the hop to
+# alienplanet is impossible straight off a login. Step off the spawn point and back,
+# then send it. Waits are in ticks: 20 ticks ~ 1 second.
+#
+# NOTE: while the account is unauthenticated, the 2FA plugin swallows every command and
+# answers "Unknown command", so this hop only lands after /2fa.
+wait 60
+move north
+wait 20
+move south
+wait 40
+send /server alienplanet
