@@ -1,23 +1,13 @@
-# Build output: the image builds its own.
-**/bin/
-**/obj/
+# The image pulls the MCC release straight from GitHub, so it needs no build context at
+# all. Everything here is host-side state; data-*/ in particular holds account passwords,
+# Discord tokens and live session caches, which must never reach an image layer.
+data-*/
+.env
 
 .git/
 .gitignore
-.vs/
-*.user
-
-# Local state must never end up in an image layer. session.json in particular holds a
-# live Minecraft access token and a Microsoft refresh token.
-thanosclient.json
-session.json
-logs/
-data/
-.env
-
 Dockerfile
 docker-compose.yml
 README.md
-
-# The client image does not run the test project.
-tests/
+MinecraftClient.example.ini
+join.txt

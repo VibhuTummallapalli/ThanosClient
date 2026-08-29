@@ -1,36 +1,28 @@
-# Build stage: restore against the csproj alone so the dependency layer caches across
-# source edits.
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# Minecraft Console Client, from the project's own self-contained linux-x64 release.
+# Building from source would pull the whole .NET SDK into the image; this does not.
+FROM debian:12-slim
 
-WORKDIR /src
-COPY src/ThanosClient/ThanosClient.csproj src/ThanosClient/
-RUN dotnet restore src/ThanosClient/ThanosClient.csproj
+# Pinned deliberately. MCC's config format shifts between releases, so an unpinned
+# image would silently rewrite MinecraftClient.ini on the next rebuild.
+ARG MCC_VERSION=20260827-508
 
-COPY src/ src/
-# PublishSingleFile is off here: it needs a RuntimeIdentifier, and a framework-dependent
-# publish is what the runtime image expects anyway.
-RUN dotnet publish src/ThanosClient/ThanosClient.csproj \
-    -c Release -o /app --no-restore -p:PublishSingleFile=false
+# libicu: the release is not built with invariant globalization, so it needs real ICU.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates libicu72 \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 
-# Runtime stage: a console client needs the base runtime, not ASP.NET.
-FROM mcr.microsoft.com/dotnet/runtime:9.0
+ADD --chmod=0755 \
+    https://github.com/MCCTeam/Minecraft-Console-Client/releases/download/${MCC_VERSION}/MinecraftClient-${MCC_VERSION}-linux-x64 \
+    /usr/local/bin/mcc
 
-COPY --from=build /app /app
+# uid 1000 so a bind-mounted data dir owned by the host's first user is writable
+# without a chown on every deploy.
+RUN useradd --uid 1000 --create-home mcc
+USER mcc
 
-# /data holds everything that must survive a redeploy: the config, the cached session,
-# and the chat log. Mount a volume over it.
-RUN useradd --create-home --uid 1000 thanos \
- && mkdir -p /data \
- && chown -R thanos:thanos /data
+# Everything that must survive a rebuild lives here: MinecraftClient.ini, the session
+# cache, and the scripts. Mount a volume over it.
+WORKDIR /opt/data
 
-USER thanos
-WORKDIR /data
-
-# Without this the session would default to a path under HOME, which is inside the
-# image: the token would be discarded on every rebuild and the bot would need a fresh
-# interactive sign-in each deploy.
-ENV THANOSCLIENT_SESSION_PATH=/data/session.json
-
-# Running detached leaves no terminal attached, which the client handles by not reading
-# console input.
-ENTRYPOINT ["dotnet", "/app/ThanosClient.dll"]
+ENTRYPOINT ["/usr/local/bin/mcc"]
