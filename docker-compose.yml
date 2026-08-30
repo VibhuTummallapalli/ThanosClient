@@ -18,13 +18,58 @@ x-mcc: &mcc
   # MCC sits well under this. The cap stops one account starving the other or the host.
   mem_limit: 320m
 
+  # Only so limbo is up before a bot is parked onto it. A bot does not need limbo to
+  # start normally, and compose does not wait for readiness here, so this is a nicety
+  # rather than a guarantee -- see the README on the retry if a park lands too early.
+  depends_on:
+    - limbo
+
   logging:
     driver: json-file
     options:
       max-size: "10m"
       max-file: "3"
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
+  # The parking server. MCC's Discord bridge only exists while MCC is connected to a
+  # server, so `.connect limbo` moves a bot here -- off cosmicreborn, account free --
+  # while keeping the bridge answering Discord. See README, "Taking a bot offline".
+  limbo:
+    build:
+      context: .
+      dockerfile: Dockerfile.limbo
+    image: nanolimbo:1.13.0
+    container_name: limbo
+    restart: unless-stopped
+    # Measured at ~84 MiB idle: a 64 MiB heap plus the JVM's own metaspace, thread stacks
+    # and netty direct buffers. 128m left only ~30 MiB of headroom, which is too close.
+    mem_limit: 192m
+
+    # NO published ports. A limbo authenticates nobody, so it must stay reachable only
+    # from inside the compose network.
+    networks:
+      default:
+        # The dot is load-bearing. MCC's SetServerIP rejects any host without a dot in
+        # it that is not literally "localhost", and it applies that test to the target
+        # of a ServerList alias too -- so the plain service name "limbo" cannot be
+        # reached by /connect under any alias. This is what the ini's alias points at.
+        aliases:
+          - limbo.internal
+
+    volumes:
+      - ./limbo-settings.yml:/opt/limbo/settings.yml:ro
+
+    tmpfs:
+      - /opt/limbo/logs:mode=0755,uid=1000,gid=1000,size=8m
+
+    logging: *logging
+
   mcc-1:
     <<: *mcc
     container_name: mcc-1
