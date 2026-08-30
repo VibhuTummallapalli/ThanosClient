@@ -44,18 +44,22 @@ carries a live Minecraft session. `chmod 600` the ini.
 
 ## Where it can run
 
-**A residential IP. Not a cloud VM.** CosmicReborn flags datacenter ranges as
-VPN/proxy: a working container on a GCP `e2-micro` authenticated, joined, and was kicked
-within one second with *"Your IP is flagged as a VPN/Proxy"*. The identical container had
-joined fine from the home connection minutes earlier, so it is the IP range, not the
-client. Practically every cloud provider's ranges are flagged the same way — this is not
-worth re-testing provider by provider.
+It runs on a cloud VM today: a GCP `e2-micro` in `us-central1-a`, deploy directory
+`/opt/mcc`. That is worth stating plainly because this file used to claim the opposite.
 
-The server's VPN whitelist is conditional on enabling `/2fa` on the account, which is the
-supported way around it if a cloud host is ever genuinely needed.
+CosmicReborn does flag datacenter ranges as VPN/proxy, and the block was real: on
+2026-08-29 a working container on that VM authenticated, joined, and was kicked inside a
+second with *"Your IP is flagged as a VPN/Proxy"*, while the identical container joined
+fine from the home connection minutes earlier. It is no longer blocked — the same VM, on
+the same external IP, has since held a connection for 18 hours straight. Something changed
+in between, and the likely cause is the whitelist below, but that has not been confirmed.
+
+The server's VPN whitelist is conditional on enabling `/2fa` on the account. If a fresh
+cloud host ever gets kicked this way, enable `/2fa` first rather than concluding the
+provider's ranges are unusable.
 
 Resource use is small: MCC sits well under the 320 MB cap in `docker-compose.yml`, even
-with `TerrainAndMovements` on.
+with `TerrainAndMovements` on, and limbo idles around 84 MB against its 192 MB cap.
 
 ## First run
 
