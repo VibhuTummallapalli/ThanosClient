@@ -10,3 +10,7 @@ wait 20
 move south
 wait 40
 send /server alienplanet
+
+# This also fires while the bot is parked on limbo, since the ScriptScheduler trigger
+# runs on every login. The moves and the hop are both no-ops there -- limbo ignores chat
+# -- so it is harmless noise rather than something to guard against.

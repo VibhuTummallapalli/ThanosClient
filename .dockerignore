@@ -1,4 +1,4 @@
-# The image pulls the MCC release straight from GitHub, so it needs no build context at
+# Both images pull their release straight from GitHub, so neither needs a build context at
 # all. Everything here is host-side state; data-*/ in particular holds account passwords,
 # Discord tokens and live session caches, which must never reach an image layer.
 data-*/
@@ -7,7 +7,9 @@ data-*/
 .git/
 .gitignore
 Dockerfile
+Dockerfile.limbo
 docker-compose.yml
+limbo-settings.yml
 README.md
 MinecraftClient.example.ini
 join.txt

@@ -29,8 +29,10 @@ The old code is preserved in git history (`git log -- src/`) if it is ever wante
 
 ```
 Dockerfile                    MCC image, built from the project's linux-x64 release
-docker-compose.yml            one service per account: mcc-1, mcc-2
+Dockerfile.limbo              NanoLimbo image -- the parking server, see below
+docker-compose.yml            one service per account (mcc-1, mcc-2), plus limbo
 MinecraftClient.example.ini   the settings that differ from MCC's defaults
+limbo-settings.yml            NanoLimbo config, mounted read-only into the container
 join.txt                      post-login script: move, then hop to alienplanet
 data-1/  data-2/              per-account runtime state -- gitignored, see below
 ```
@@ -108,6 +110,8 @@ matter:
 | `.send <text>` | send chat, or a server command when it starts with `/` |
 | `.send /2fa <code>` | clear the 2FA prompt (see below) |
 | `.send /server alienplanet` | hop to the survival server by hand |
+| `.connect limbo` | park the bot -- take the account off cosmicreborn |
+| `.connect cosmic` | send it back to cosmicreborn |
 | `.list` | players currently online |
 | `.script join.txt` | re-run the login hop |
 | `.reco` | reconnect |
@@ -119,6 +123,47 @@ in each account's ini. Adding a person means editing both inis and restarting.
 `Relay_All_Messages = true` relays system messages and join/leave notices, not just player
 chat. Messages are batched on a 3-second interval, because one Discord message per chat
 line hits the per-channel rate limit almost immediately on a busy server.
+
+## Taking a bot offline
+
+`.connect limbo` parks a bot, `.connect cosmic` sends it back, and both work from Discord.
+
+The indirection is there because MCC's Discord bridge is a `ChatBot` living inside the
+client, so it exists only while MCC is connected to *a* server. Quitting MCC to free the
+account takes the bridge down with it, and then nothing is left listening to hear the
+command to bring it back. So the bot moves rather than disconnects: `limbo` is a
+[NanoLimbo](https://github.com/Nan1t/NanoLimbo) instance in this compose stack whose only
+job is to hold a connection open. Parked there the account is genuinely off cosmicreborn —
+free to log in on yourself, not holding a slot, not visible — while the bridge keeps
+answering Discord.
+
+Limbo has no authentication of any kind and is deliberately not published to the host, so
+it is reachable only from inside the compose network.
+
+**A park does not survive a container restart.** `/connect` writes the new server to MCC's
+in-memory `InternalConfig`, never to `MinecraftClient.ini`, so `docker compose restart
+mcc-1` or a host reboot puts the bot back on cosmicreborn by itself. That fails toward
+"online", which is usually what you want — but if you parked the bot to play on the
+account yourself, a reboot will take the account back.
+
+Three smaller things:
+
+- **The alias names come from the ini, not from MCC.** `cosmic` and `limbo` are keys in
+  `[Main.Advanced.ServerList]`, and MCC matches them case-sensitively. They have to be
+  aliases: MCC rejects any host with no dot in it that is not literally `localhost`, and
+  applies that test to an alias's target too — which is why the limbo entry points at the
+  dotted network alias `limbo.internal` from `docker-compose.yml` and not at the compose
+  service name.
+- **If limbo is down when you park, the bot gets stuck.** AutoRelog retries forever, so it
+  will sit trying to reach a server that is not there. `docker compose restart mcc-1` gets
+  it back, since a restart returns it to the ini's server.
+- **`join.txt` runs on limbo too**, because the `ScriptScheduler` trigger fires on every
+  login. Its `move` steps and its `/server alienplanet` are both no-ops there — limbo
+  ignores chat — so it is log noise, not a problem. If it ever grates, MCC's `execif` can
+  gate the hop on `MCC.GetServerHost() == "cosmicreborn.net"`.
+
+Upgrading limbo works like MCC: `LIMBO_VERSION` is pinned in `Dockerfile.limbo` and the
+resulting tag in `docker-compose.yml`, so bump both together.
 
 ## Server behaviour worth knowing
 

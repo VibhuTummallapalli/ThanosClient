@@ -1,0 +1,94 @@
+# NanoLimbo config for the parking server. Mounted read-only into the container.
+#
+# This server exists for one reason: MCC's Discord bridge is a ChatBot living inside the
+# client, so it only exists while MCC is connected to a server. Parking on this one keeps
+# the bridge alive and answering Discord while the account is off cosmicreborn.
+
+bind:
+  # Wildcard, not the upstream default of "localhost" -- the mcc-* containers connect to
+  # this across the compose network. It is NOT published to the host in docker-compose.yml,
+  # so nothing outside the compose network can reach it. That matters: a limbo has no
+  # authentication at all.
+  ip: "0.0.0.0"
+  port: 25565
+
+maxPlayers: 4
+
+ping:
+  description: "parking server"
+  version: "limbo"
+  # -1 echoes back whatever protocol the client speaks, so the 1.8.9 bots are accepted
+  # without pinning this to 47 and locking out a later MinecraftVersion bump.
+  protocol: -1
+
+# The bots are pinned to 1.8.9, where an empty END sky renders as a void the client is
+# happy to sit in. OVERWORLD is the better-trodden path for MCC's TerrainAndMovements.
+dimension: OVERWORLD
+gameMode: 3
+
+playerList:
+  # Keep enabled: NanoLimbo notes some clients crash without the list packet, and the
+  # cost is one packet.
+  enable: true
+  username: "parked"
+
+# Everything below is chrome for human players. These bots relay what they receive into
+# Discord, so each one enabled is recurring noise in the channel for no benefit.
+headerAndFooter:
+  enable: false
+  header: ""
+  footer: ""
+
+# The one message worth keeping: it lands in Discord as confirmation the park took.
+joinMessage:
+  enable: true
+  text: "Parked. This account is off cosmicreborn -- .connect cosmic to send it back."
+
+bossBar:
+  enable: false
+  text: ""
+  health: 1.0
+  color: BLUE
+  division: SOLID
+
+title:
+  enable: false
+  title: ""
+  subtitle: ""
+  fadeIn: 10
+  stay: 100
+  fadeOut: 10
+
+brandName:
+  enable: false
+  content: ""
+
+secureProfile: false
+
+# Direct connections only. This sits behind no proxy, so there is nothing to forward and
+# nothing to trust; LEGACY or BUNGEE_GUARD here would let a connection assert its own
+# identity, which on an unauthenticated server is worth avoiding even on a private network.
+infoForwarding:
+  type: NONE
+
+readTimeout: 30000
+
+# The addresses would only ever be the other containers, and the log is noisier with them.
+logPlayersIp: false
+
+debugLevel: 2
+
+netty:
+  # NIO, not EPOLL. Netty's epoll transport is a glibc-linked native library, and NIO is
+  # indistinguishable from it at two connections. Not worth a native-load failure.
+  transportType: NIO
+  threads:
+    bossGroup: 1
+    workerGroup: 2
+
+traffic:
+  enable: true
+  maxPacketSize: 8192
+  interval: 7.0
+  maxPacketRate: 500.0
+  maxPacketBytesRate: 2048.0

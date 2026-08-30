@@ -1,0 +1,38 @@
+# NanoLimbo: a parking server for the bots. Nothing plays on it -- it exists so MCC can
+# stay connected to *something* while the account is off cosmicreborn. See README.
+#
+# Glibc base, not Alpine: netty ships its native epoll transport linked against glibc, so
+# on musl it fails to load. settings.yml asks for NIO anyway, which sidesteps it entirely,
+# but there is no reason to fight the JVM's own base image over 30 MB.
+FROM eclipse-temurin:21-jre-jammy
+
+# Pinned for the same reason MCC is: settings.yml keys move between releases.
+ARG LIMBO_VERSION=v1.13.0
+
+RUN useradd --uid 1000 --create-home limbo
+
+# WORKDIR before ADD, and the order is load-bearing. `ADD --chmod` applies the mode to
+# every parent directory it has to create as well, so letting ADD create /opt/limbo left
+# it mode 0444 -- no execute bit, so the directory could not be traversed and the jar was
+# unreadable even though the jar's own mode was fine ("Unable to access jarfile").
+# WORKDIR creates it 0755 first, and ADD then only writes the file.
+WORKDIR /opt/limbo
+
+# NanoLimbo's bundled logback.xml writes logs/log-<date>.txt relative to the working
+# directory. Without this the appender fails to open and dumps a stack trace over every
+# startup. The real log is Docker's stdout capture; compose mounts a small tmpfs here so
+# this copy stays bounded and never lands in the container's writable layer.
+RUN mkdir -p /opt/limbo/logs \
+ && chown limbo:limbo /opt/limbo/logs
+
+# Read-only: settings.yml is bind-mounted over this directory at run time.
+ADD --chmod=0444 \
+    https://github.com/Nan1t/NanoLimbo/releases/download/${LIMBO_VERSION}/NanoLimbo.jar \
+    /opt/limbo/NanoLimbo.jar
+
+USER limbo
+
+# The jar is ~5 MB and holds at most two connections, so the heap can be tiny. Left
+# unbounded the JVM would size itself off the host's RAM and reserve far more than it
+# will ever touch.
+ENTRYPOINT ["java", "-Xms16m", "-Xmx64m", "-XX:+UseSerialGC", "-jar", "/opt/limbo/NanoLimbo.jar"]
